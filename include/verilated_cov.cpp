@@ -27,6 +27,7 @@
 #include <map>
 #include <deque>
 #include <fstream>
+#include <cstdlib>
 
 //=============================================================================
 // VerilatedCovImpBase
@@ -334,14 +335,15 @@ public:
 #endif
 	selftest();
 
-	std::ofstream os (filename);
+	std::ofstream os("lcov.info");
 	if (os.fail()) {
 	    std::string msg = std::string("%Error: Can't write '")+filename+"'";
 	    VL_FATAL_MT("",0,"",msg.c_str());
 	    return;
 	}
-	os << "# SystemC::Coverage-3\n";
-
+	// os << "# SystemC::Coverage-3\n";
+	os << "TN:" << std::endl;
+	
 	// Build list of events; totalize if collapsing hierarchy
 	typedef std::map<std::string,std::pair<std::string,vluint64_t> > EventMap;
 	EventMap eventCounts;
@@ -389,12 +391,37 @@ public:
 
 	// Output body
 	for (EventMap::const_iterator it=eventCounts.begin(); it!=eventCounts.end(); ++it) {
-	    os<<"C '"<<std::dec;
-	    os<<it->first;
-	    if (it->second.first != "") os<<keyValueFormatter(VL_CIK_HIER,it->second.first);
-	    os<<"' "<<it->second.second;
-	    os<<std::endl;
+		static std::string filename_old = "";
+		static int line_old = 1;
+		static vluint64_t cover_old = 0;
+
+		// Detect filename and line number
+		std::string delKey = "\01";
+		std::string delVal = "\02";
+		std::string tokenF = it->first.substr(it->first.find(delVal) + 1, it->first.size());
+		std::string tokenL = tokenF.substr(tokenF.find(delVal) + 1, tokenF.size());
+		tokenF = tokenF.substr(3, tokenF.find(delKey)-3); // removing ../ as well
+		tokenL = tokenL.substr(0, tokenL.find(delKey));
+
+		if (filename_old != tokenF) {
+			os << "SF:/home/fredy/workspaceSublime/neopixel-controler/" << tokenF << std::endl;
+			filename_old = tokenF;
+			line_old     = 1;
+		}
+
+		int line = std::atoi(tokenL.c_str());
+
+		for (int lineIndex = line_old; lineIndex < line; lineIndex++) {
+			os << "DA:" << lineIndex << "," << cover_old << std::endl;
+		}
+		os << "DA:" << line << "," << it->second.second << std::endl;
+
+		cover_old = it->second.second;
+
+		line_old = line;
 	}
+	os << "end_of_record" << std::endl;
+
     }
 };
 
