@@ -396,7 +396,6 @@ public:
 		static int firstSourceFile     = 1;
 		static int lineOld             = 1;
 		static int firstLineInSource   = 1;
-		static vluint64_t coverOld     = 0;
 
 		// Detect filename and line number
 		std::string delKey = "\01";
@@ -432,14 +431,8 @@ public:
 
 		int line = std::atoi(tokenL.c_str());
 
-		// if (!firstLineInSource) {
-		// 	for (int lineIndex = lineOld; lineIndex < line; lineIndex++) {
-		// 		os << "DA:" << lineIndex << "," << coverOld << std::endl;
-		// 	}
-		// }
 		os << "DA:" << line << "," << it->second.second << std::endl;
 
-		coverOld          = it->second.second;
 		lineOld           = line;
 		firstLineInSource = 0;
 	}
