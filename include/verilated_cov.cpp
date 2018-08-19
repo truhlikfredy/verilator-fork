@@ -342,7 +342,6 @@ public:
 	    return;
 	}
 	// os << "# SystemC::Coverage-3\n";
-	os << "TN:" << std::endl;
 	
 	// Build list of events; totalize if collapsing hierarchy
 	typedef std::map<std::string,std::pair<std::string,vluint64_t> > EventMap;
@@ -390,10 +389,14 @@ public:
 	}
 
 	// Output body
+	int branchesHit         = 0;
+	int branchesMissed      = 0;
 	for (EventMap::const_iterator it=eventCounts.begin(); it!=eventCounts.end(); ++it) {
-		static std::string filename_old = "";
-		static int line_old = 1;
-		static vluint64_t cover_old = 0;
+		static std::string filenameOld = "";
+		static int firstSourceFile     = 1;
+		static int lineOld             = 1;
+		static int firstLineInSource   = 1;
+		static vluint64_t coverOld     = 0;
 
 		// Detect filename and line number
 		std::string delKey = "\01";
@@ -403,23 +406,45 @@ public:
 		tokenF = tokenF.substr(3, tokenF.find(delKey)-3); // removing ../ as well
 		tokenL = tokenL.substr(0, tokenL.find(delKey));
 
-		if (filename_old != tokenF) {
+		if (it->second.second>0) {
+			branchesHit++;
+		}
+		else {
+			branchesMissed++;
+		}
+
+		if (filenameOld != tokenF)
+		{
+			if (!firstSourceFile) {
+				os << "BRF:" << (branchesHit + branchesMissed) << std::endl;
+				os << "BRH:" << branchesHit << std::endl;
+				os << "end_of_record" << std::endl;
+			}
+			os << "TN:" << std::endl;
 			os << "SF:/home/fredy/workspaceSublime/neopixel-controler/" << tokenF << std::endl;
-			filename_old = tokenF;
-			line_old     = 1;
+			filenameOld       = tokenF;
+			lineOld           = 1;
+			firstSourceFile   = 0;
+			branchesHit       = 0;
+			branchesMissed    = 0;
+			firstLineInSource = 1;
 		}
 
 		int line = std::atoi(tokenL.c_str());
 
-		for (int lineIndex = line_old; lineIndex < line; lineIndex++) {
-			os << "DA:" << lineIndex << "," << cover_old << std::endl;
-		}
+		// if (!firstLineInSource) {
+		// 	for (int lineIndex = lineOld; lineIndex < line; lineIndex++) {
+		// 		os << "DA:" << lineIndex << "," << coverOld << std::endl;
+		// 	}
+		// }
 		os << "DA:" << line << "," << it->second.second << std::endl;
 
-		cover_old = it->second.second;
-
-		line_old = line;
+		coverOld          = it->second.second;
+		lineOld           = line;
+		firstLineInSource = 0;
 	}
+	os << "BRF:" << branchesHit + branchesMissed << std::endl;
+	os << "BRH:" << branchesHit << std::endl;
 	os << "end_of_record" << std::endl;
 
     }
