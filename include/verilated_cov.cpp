@@ -29,6 +29,11 @@
 #include <fstream>
 #include <cstdlib>
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <linux/limits.h>
+#include <libgen.h>
+
 //=============================================================================
 // VerilatedCovImpBase
 /// Implementation base class for constants
@@ -402,7 +407,7 @@ public:
 		std::string delVal = "\02";
 		std::string tokenF = it->first.substr(it->first.find(delVal) + 1, it->first.size());
 		std::string tokenL = tokenF.substr(tokenF.find(delVal) + 1, tokenF.size());
-		tokenF = tokenF.substr(3, tokenF.find(delKey)-3); // removing ../ as well
+		tokenF = "../" + tokenF.substr(0, tokenF.find(delKey));
 		tokenL = tokenL.substr(0, tokenL.find(delKey));
 
 		if (it->second.second>0) {
@@ -420,7 +425,19 @@ public:
 				os << "end_of_record" << std::endl;
 			}
 			os << "TN:" << std::endl;
-			os << "SF:/home/fredy/workspaceSublime/neopixel-controler/" << tokenF << std::endl;
+
+			// getting absolute path of the source file
+			char resolved_path[PATH_MAX];
+			realpath(tokenF.c_str(), resolved_path);
+			// size_t lastDelim = tokenF.rfind('/', tokenF.size());
+			// std::string filenameOnly = "";
+			// if (lastDelim != std::string::npos) {
+			// 	filenameOnly = tokenF.substr(lastDelim + 1, tokenF.size() - lastDelim);
+			// }
+			// printf("%s   %s  %s \n", tokenF.c_str(), resolved_path, filenameOnly.c_str());
+			// os << "SF:" << resolved_path << "/" << filenameOnly.c_str() << std::endl;
+
+			os << "SF:" << resolved_path << std::endl;
 			filenameOld       = tokenF;
 			lineOld           = 1;
 			firstSourceFile   = 0;
