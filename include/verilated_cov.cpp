@@ -340,7 +340,7 @@ public:
 #endif
 	selftest();
 
-	std::ofstream os("lcov.info");
+	std::ofstream os(filename);
 	if (os.fail()) {
 	    std::string msg = std::string("%Error: Can't write '")+filename+"'";
 	    VL_FATAL_MT("",0,"",msg.c_str());
@@ -399,7 +399,7 @@ public:
 	for (EventMap::const_iterator it=eventCounts.begin(); it!=eventCounts.end(); ++it) {
 		static std::string filenameOld = "";
 		static int firstSourceFile     = 1;
-		static int lineOld             = 1;
+		static std::string lineOld     = "";
 		static int firstLineInSource   = 1;
 
 		// Detect filename and line number
@@ -410,6 +410,7 @@ public:
 		tokenF = "../" + tokenF.substr(0, tokenF.find(delKey));
 		tokenL = tokenL.substr(0, tokenL.find(delKey));
 
+		// Counts if branch got hit or missed
 		if (it->second.second>0) {
 			branchesHit++;
 		}
@@ -417,42 +418,42 @@ public:
 			branchesMissed++;
 		}
 
+		// If new file entry was found do few extra steps
 		if (filenameOld != tokenF)
 		{
 			if (!firstSourceFile) {
+				// Do summary if it's not the very first entry
 				os << "BRF:" << (branchesHit + branchesMissed) << std::endl;
 				os << "BRH:" << branchesHit << std::endl;
 				os << "end_of_record" << std::endl;
 			}
+
+			// But at the begining add few "header" information entries
 			os << "TN:" << std::endl;
 
 			// getting absolute path of the source file
 			char resolved_path[PATH_MAX];
 			realpath(tokenF.c_str(), resolved_path);
-			// size_t lastDelim = tokenF.rfind('/', tokenF.size());
-			// std::string filenameOnly = "";
-			// if (lastDelim != std::string::npos) {
-			// 	filenameOnly = tokenF.substr(lastDelim + 1, tokenF.size() - lastDelim);
-			// }
-			// printf("%s   %s  %s \n", tokenF.c_str(), resolved_path, filenameOnly.c_str());
-			// os << "SF:" << resolved_path << "/" << filenameOnly.c_str() << std::endl;
 
 			os << "SF:" << resolved_path << std::endl;
+
+			// New file means few things needs to be reset again
 			filenameOld       = tokenF;
-			lineOld           = 1;
+			lineOld           = "";
 			firstSourceFile   = 0;
 			branchesHit       = 0;
 			branchesMissed    = 0;
 			firstLineInSource = 1;
 		}
 
-		int line = std::atoi(tokenL.c_str());
+		// Report coverage for given branch/line
+		os << "DA:" << tokenL << "," << it->second.second << std::endl;
 
-		os << "DA:" << line << "," << it->second.second << std::endl;
-
-		lineOld           = line;
+		lineOld           = tokenL;
 		firstLineInSource = 0;
 	}
+
+	// Do sumary on the very last entry
 	os << "BRF:" << branchesHit + branchesMissed << std::endl;
 	os << "BRH:" << branchesHit << std::endl;
 	os << "end_of_record" << std::endl;
