@@ -92,6 +92,8 @@ public:
     static const char* defaultFilename() VL_PURE { return "coverage.dat"; }
     /// Write all coverage data to a file
     static void write (const char* filenamep = defaultFilename()) VL_MT_SAFE;
+    /// Write all coverage data to a file in a lcov format
+    static void writeLcov(const char *filenamep = defaultFilename()) VL_MT_SAFE;
     /// Insert a coverage item
     /// We accept from 1-30 key/value pairs, all as strings.
     /// Call _insert1, followed by _insert2 and _insert3

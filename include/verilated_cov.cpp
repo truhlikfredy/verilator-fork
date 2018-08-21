@@ -340,13 +340,13 @@ public:
 #endif
 	selftest();
 
-	std::ofstream os(filename);
+	std::ofstream os (filename);
 	if (os.fail()) {
 	    std::string msg = std::string("%Error: Can't write '")+filename+"'";
 	    VL_FATAL_MT("",0,"",msg.c_str());
 	    return;
 	}
-	// os << "# SystemC::Coverage-3\n";
+	os << "# SystemC::Coverage-3\n";
 	
 	// Build list of events; totalize if collapsing hierarchy
 	typedef std::map<std::string,std::pair<std::string,vluint64_t> > EventMap;
@@ -394,71 +394,143 @@ public:
 	}
 
 	// Output body
-	int branchesHit         = 0;
-	int branchesMissed      = 0;
 	for (EventMap::const_iterator it=eventCounts.begin(); it!=eventCounts.end(); ++it) {
-		static std::string filenameOld = "";
-		static int firstSourceFile     = 1;
-		static std::string lineOld     = "";
-		static int firstLineInSource   = 1;
-
-		// Detect filename and line number
-		std::string delKey = "\01";
-		std::string delVal = "\02";
-		std::string tokenF = it->first.substr(it->first.find(delVal) + 1, it->first.size());
-		std::string tokenL = tokenF.substr(tokenF.find(delVal) + 1, tokenF.size());
-		tokenF = "../" + tokenF.substr(0, tokenF.find(delKey));
-		tokenL = tokenL.substr(0, tokenL.find(delKey));
-
-		// Counts if branch got hit or missed
-		if (it->second.second>0) {
-			branchesHit++;
-		}
-		else {
-			branchesMissed++;
-		}
-
-		// If new file entry was found do few extra steps
-		if (filenameOld != tokenF)
-		{
-			if (!firstSourceFile) {
-				// Do summary if it's not the very first entry
-				os << "BRF:" << (branchesHit + branchesMissed) << std::endl;
-				os << "BRH:" << branchesHit << std::endl;
-				os << "end_of_record" << std::endl;
-			}
-
-			// But at the begining add few "header" information entries
-			os << "TN:" << std::endl;
-
-			// getting absolute path of the source file
-			char resolved_path[PATH_MAX];
-			realpath(tokenF.c_str(), resolved_path);
-
-			os << "SF:" << resolved_path << std::endl;
-
-			// New file means few things needs to be reset again
-			filenameOld       = tokenF;
-			lineOld           = "";
-			firstSourceFile   = 0;
-			branchesHit       = 0;
-			branchesMissed    = 0;
-			firstLineInSource = 1;
-		}
-
-		// Report coverage for given branch/line
-		os << "DA:" << tokenL << "," << it->second.second << std::endl;
-
-		lineOld           = tokenL;
-		firstLineInSource = 0;
+		os<<"C '"<<std::dec;
+		os<< it->first;
+		if (it->second.first != "") os<<keyValueFormatter(VL_CIK_HIER,it->second.first);
+		os<<"' "<< it->second.second;
+		os<<std::endl;
+	}
 	}
 
-	// Do sumary on the very last entry
-	os << "BRF:" << branchesHit + branchesMissed << std::endl;
-	os << "BRH:" << branchesHit << std::endl;
-	os << "end_of_record" << std::endl;
+	void writeLcov(const char *filename) VL_EXCLUDES(m_mutex) {
+		Verilated::quiesce();
+		VerilatedLockGuard lock(m_mutex);
+#ifndef VM_COVERAGE
+		VL_FATAL_MT("", 0, "", "%Error: Called VerilatedCov::write when VM_COVERAGE disabled\n");
+#endif
+		selftest();
 
+		std::ofstream os(filename);
+		if (os.fail()) {
+			std::string msg = std::string("%Error: Can't write '") + filename + "'";
+			VL_FATAL_MT("", 0, "", msg.c_str());
+			return;
+		}
+
+		// Build list of events; totalize if collapsing hierarchy
+		typedef std::map<std::string, std::pair<std::string, vluint64_t> > EventMap;
+		EventMap eventCounts;
+		for (ItemList::iterator it = m_items.begin(); it != m_items.end(); ++it) {
+			VerilatedCovImpItem *itemp = *(it);
+			std::string name;
+			std::string hier;
+			bool per_instance = false;
+
+			for (int i = 0; i < MAX_KEYS; ++i) {
+				if (itemp->m_keys[i] != KEY_UNDEF) {
+					std::string key = VerilatedCovKey::shortKey(m_indexValues[itemp->m_keys[i]]);
+					std::string val = m_indexValues[itemp->m_vals[i]];
+					if (key == VL_CIK_PER_INSTANCE) {
+						if (val != "0")
+							per_instance = true;
+					}
+					if (key == VL_CIK_HIER) {
+						hier = val;
+					}
+					else {
+						// Print it
+						name += keyValueFormatter(key, val);
+					}
+				}
+			}
+			if (per_instance) { // Not collapsing hierarchies
+				name += keyValueFormatter(VL_CIK_HIER, hier);
+				hier = "";
+			}
+
+			// Group versus point labels don't matter here, downstream
+			// deals with it.  Seems bad for sizing though and doesn't
+			// allow easy addition of new group codes (would be
+			// inefficient)
+
+			// Find or insert the named event
+			EventMap::iterator cit = eventCounts.find(name);
+			if (cit != eventCounts.end()) {
+				const std::string &oldhier = cit->second.first;
+				cit->second.second += itemp->count();
+				cit->second.first = combineHier(oldhier, hier);
+			}
+			else {
+				eventCounts.insert(std::make_pair(name, make_pair(hier, itemp->count())));
+			}
+		}
+
+		// Output body
+		int branchesHit = 0;
+		int branchesMissed = 0;
+		for (EventMap::const_iterator it = eventCounts.begin(); it != eventCounts.end(); ++it) {
+			static std::string filenameOld = "";
+			static int firstSourceFile = 1;
+			static std::string lineOld = "";
+			static int firstLineInSource = 1;
+
+			// Detect filename and line number
+			std::string delKey = "\01";
+			std::string delVal = "\02";
+			std::string tokenF = it->first.substr(it->first.find(delVal) + 1, it->first.size());
+			std::string tokenL = tokenF.substr(tokenF.find(delVal) + 1, tokenF.size());
+			tokenF = "../" + tokenF.substr(0, tokenF.find(delKey));
+			tokenL = tokenL.substr(0, tokenL.find(delKey));
+
+			// Counts if branch got hit or missed
+			if (it->second.second > 0) {
+				branchesHit++;
+			}
+			else {
+				branchesMissed++;
+			}
+
+			// If new file entry was found do few extra steps
+			if (filenameOld != tokenF) {
+				if (!firstSourceFile) {
+					// Do summary if it's not the very first entry
+					os << "BRF:" << (branchesHit + branchesMissed) << std::endl;
+					os << "BRH:" << branchesHit << std::endl;
+					os << "end_of_record" << std::endl;
+				}
+
+				// But at the begining add few "header" information entries
+				os << "TN:" << std::endl;
+
+				// getting absolute path of the source file
+				char resolved_path[PATH_MAX];
+				realpath(tokenF.c_str(), resolved_path);
+
+				os << "SF:" << resolved_path << std::endl;
+
+				// New file means few things needs to be reset again
+				filenameOld = tokenF;
+				lineOld = "";
+				firstSourceFile = 0;
+				branchesHit = 0;
+				branchesMissed = 0;
+				firstLineInSource = 1;
+			}
+
+			// Report coverage for given branch/line
+			os << "DA:" << tokenL << "," << it->second.second << std::endl;
+
+			lineOld = tokenL;
+			firstLineInSource = 0;
+		}
+
+		// Do sumary on the very last entry
+		os << "BRF:" << branchesHit + branchesMissed << std::endl;
+		os << "BRH:" << branchesHit << std::endl;
+		os << "end_of_record" << std::endl;
     }
+
 };
 
 //=============================================================================
@@ -476,8 +548,13 @@ void VerilatedCov::zero() VL_MT_SAFE {
 void VerilatedCov::write(const char* filenamep) VL_MT_SAFE {
     VerilatedCovImp::imp().write(filenamep);
 }
-void VerilatedCov::_inserti(vluint32_t* itemp) VL_MT_SAFE {
-    VerilatedCovImp::imp().inserti(new VerilatedCoverItemSpec<vluint32_t>(itemp));
+void VerilatedCov::writeLcov(const char *filenamep) VL_MT_SAFE
+{
+	VerilatedCovImp::imp().writeLcov(filenamep);
+}
+void VerilatedCov::_inserti(vluint32_t *itemp) VL_MT_SAFE
+{
+	VerilatedCovImp::imp().inserti(new VerilatedCoverItemSpec<vluint32_t>(itemp));
 }
 void VerilatedCov::_inserti(vluint64_t* itemp) VL_MT_SAFE {
     VerilatedCovImp::imp().inserti(new VerilatedCoverItemSpec<vluint64_t>(itemp));
